@@ -23,7 +23,7 @@ copy /Y "app\build\outputs\apk\debug\app-debug.apk" "release_apk\KSongAssistant.
 
 echo [3/4] git add and commit ...
 %GIT% add .
-%GIT_USER% commit -m "Fix emergencyStop and mock location deadlock"
+%GIT_USER% commit -m "Fix AI key execution pass and update launcher icon"
 if errorlevel 1 (
   echo Nothing to commit or commit failed.
 )

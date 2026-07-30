@@ -18,8 +18,15 @@ public class NodeActionController {
         public String error = "";
     }
 
-    private static final String[] SEND_KEYWORDS = {"发送", "发布", "提交", "发表", "发送消息", "发表评论", "完成"};
-    private static final String[] INPUT_HINTS = {"说点什么", "评论", "输入", "私信", "消息", "聊天", "写评论", "请输入"};
+    private static final String[] SEND_KEYWORDS = {
+            "发送", "发布", "提交", "发表", "发送消息", "发表评论", "完成", "确定"
+    };
+    private static final String[] INPUT_HINTS = {
+            "打个招呼", "说点什么", "评论", "输入", "私信", "消息", "聊天", "写评论", "请输入", "留言"
+    };
+    private static final String[] INPUT_ENTRY_KEYWORDS = {
+            "打个招呼", "评论", "说点什么", "写评论", "发表评论", "留言", "输入"
+    };
 
     private final AccessibilityService service;
 
@@ -54,9 +61,52 @@ public class NodeActionController {
         }
     }
 
+    /** 先点击输入入口，再聚焦输入框。 */
+    public boolean openInputEntry() {
+        if (clickByTexts(INPUT_ENTRY_KEYWORDS)) {
+            AutomationLog.info("已点击输入入口");
+            return true;
+        }
+        return clickInputField(false);
+    }
+
+    /** 定位并点击输入框节点。 */
+    public boolean clickInputField(boolean requireEditable) {
+        AccessibilityNodeInfo root = null;
+        NodeFinder.Match field = null;
+        try {
+            root = freshRoot();
+            field = NodeFinder.findInputField(root, INPUT_HINTS);
+            if (field == null || field.node == null) {
+                AccessibilityNodeInfo focused = root == null ? null : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+                if (focused != null && (!requireEditable || focused.isEditable() || focused.isFocusable())) {
+                    field = new NodeFinder.Match(focused, "focus", "");
+                } else {
+                    NodeFinder.recycle(focused);
+                }
+            }
+            if (field == null || field.node == null) return false;
+            boolean ok = performClick(field.node);
+            if (!ok) {
+                field.node.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+                ok = field.node.isFocused();
+            }
+            if (ok) AutomationLog.info("已点击输入框 matched=" + field.matchedText);
+            return ok;
+        } finally {
+            if (field != null) NodeFinder.recycle(field.node);
+            NodeFinder.recycle(root);
+        }
+    }
+
     public boolean setText(String text) {
-        FillResult r = fillInput(text, false);
+        FillResult r = fillInput(text, true);
         return r.filled;
+    }
+
+    /** 填入文本并始终尝试点击发送/提交。 */
+    public FillResult fillInputAndSend(String text) {
+        return fillInputAndSend(text, true);
     }
 
     public FillResult fillInputAndSend(String text, boolean autoSend) {

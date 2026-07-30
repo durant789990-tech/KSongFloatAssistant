@@ -4,6 +4,7 @@ import android.content.Context;
 
 import com.zzy.ksongfloat.accessibility.KSongAccessibilityService;
 import com.zzy.ksongfloat.ai.AiConfigRepository;
+import com.zzy.ksongfloat.ai.AiRuntimeConfig;
 import com.zzy.ksongfloat.engine.AutomationEngineSelector;
 
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -53,6 +54,12 @@ public class AutomationOrchestrator {
         if (running.get()) stop();
         appContext = context.getApplicationContext();
         settings = AutomationSettingsRepository.load(appContext);
+        settings.testMode = false;
+        settings.autoSend = true;
+        settings.autoSendComment = true;
+        AiConfigRepository.get().refresh(appContext);
+        AiRuntimeConfig cfg = AiRuntimeConfig.resolve(appContext);
+        AutomationLog.info("AI 运行时配置 ready=" + cfg.ready + " model=" + cfg.model);
         stopFlag.set(false);
         loopCount = 0;
         AutomationLog.clear();
@@ -184,61 +191,43 @@ public class AutomationOrchestrator {
             AutomationLog.warn("关注点击失败：" + e.getMessage());
         }
 
-        boolean openedComment = false;
         try {
-            openedComment = actions.clickByTexts("评论", "说点什么", "写评论", "发表评论");
-            if (openedComment) AutomationLog.info("已打开评论入口");
+            boolean opened = actions.openInputEntry();
+            if (!opened) {
+                actions.clickByTexts("评论", "私信", "发消息");
+            }
+            actions.clickInputField(true);
         } catch (Exception e) {
-            AutomationLog.warn("评论入口点击失败：" + e.getMessage());
+            AutomationLog.warn("打开输入框失败：" + e.getMessage());
         }
 
-        String draft = "";
+        String comment = "";
         try {
-            draft = buildDraft();
+            comment = resolveCommentText();
         } catch (Exception e) {
-            AutomationLog.warn("AI 草稿失败：" + e.getMessage());
+            AutomationLog.warn("获取评论文本失败：" + e.getMessage());
+            comment = "唱得太棒啦！";
         }
 
-        if (draft.isEmpty()) {
-            try {
-                if (actions.clickByTexts("私信", "发消息")) {
-                    AutomationLog.info("已打开私信入口");
-                }
-                draft = buildDraft();
-            } catch (Exception e) {
-                AutomationLog.warn("私信入口失败：" + e.getMessage());
+        try {
+            NodeActionController.FillResult fill = actions.fillInputAndSend(comment, true);
+            if (fill.filled) {
+                setPhase(AutomationPhase.FILLING_COMMENT,
+                        fill.sent ? "已填写并发送：" + comment : "已填写，发送按钮未找到");
+                AutomationLog.info("填写结果 method=" + fill.method + " sent=" + fill.sent + " text=" + comment);
+                if (session != null) session.actionCount++;
+            } else {
+                AutomationLog.warn("填写失败：" + fill.error);
             }
-        }
-
-        if (!draft.isEmpty()) {
-            try {
-                // 测试模式仅禁止自动发送，不拦截点击/填字/划屏
-                boolean autoSend = !settings.testMode && (settings.autoSendComment || settings.autoSend);
-                NodeActionController.FillResult fill = actions.fillInputAndSend(draft, autoSend);
-                if (fill.filled) {
-                    setPhase(AutomationPhase.FILLING_COMMENT,
-                            autoSend ? "已填写并尝试发送" : "已填写草稿（测试模式）");
-                    AutomationLog.info("填写结果 method=" + fill.method + " sent=" + fill.sent);
-                }
-            } catch (Exception e) {
-                AutomationLog.warn("填写失败：" + e.getMessage());
-            }
-        } else {
-            try {
-                if (actions.clickByTexts("说点什么", "输入", "评论")) {
-                    actions.setText("很好听！");
-                }
-            } catch (Exception e) {
-                AutomationLog.warn("默认评论失败：" + e.getMessage());
-            }
+        } catch (Exception e) {
+            AutomationLog.warn("填写发送失败：" + e.getMessage());
         }
     }
 
-    private String buildDraft() {
-        if (!AiConfigRepository.get().isConfigured() || session == null) return "";
-        AiContentGenerator.Draft d = AiContentGenerator.generateComment(
+    private String resolveCommentText() {
+        if (session == null) return "声音真好听";
+        return AiContentGenerator.generateCommentWithFallback(
                 appContext, session, "当前屏幕公开内容", "歌友");
-        return d.text == null ? "" : d.text.trim();
     }
 
     private void setPhase(AutomationPhase p, String d) {

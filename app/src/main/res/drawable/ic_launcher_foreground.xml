@@ -1,4 +1,53 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="48dp" android:height="48dp" android:viewportWidth="48" android:viewportHeight="48">
-    <path android:fillColor="#6C5CE7" android:pathData="M24,4a20,20 0,1 0,0.1 0z"/>
-    <path android:fillColor="#FFFFFF" android:pathData="M17,15h14v4H17zM17,22h14v4H17zM17,29h10v4H17z"/>
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 唱片外圈 -->
+    <path
+        android:fillColor="#111111"
+        android:pathData="M54,28a26,26 0,1 0,0.1 0z" />
+    <!-- 纹路 -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#333333"
+        android:strokeWidth="1.2"
+        android:pathData="M54,34a20,20 0,1 0,0.1 0z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#444444"
+        android:strokeWidth="1"
+        android:pathData="M54,38a16,16 0,1 0,0.1 0z" />
+    <!-- 唱片标签 -->
+    <path
+        android:fillColor="#FF4757"
+        android:pathData="M54,44a10,10 0,1 0,0.1 0z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,48a2,2 0,1 0,0.1 0z" />
+    <!-- 麦克风杆 -->
+    <path
+        android:fillColor="#ECECEC"
+        android:pathData="M68,58 L72,78 L76,78 L72,58 Z" />
+    <!-- 麦克风头部 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M62,48h16a6,6 0,0 1,6 6v8a6,6 0,0 1,-6 6h-16a6,6 0,0 1,-6 -6v-8a6,6 0,0 1,6 -6z" />
+    <path
+        android:fillColor="#6C5CE7"
+        android:pathData="M64,52h12v10h-12z" />
+    <!-- 麦克风格栅 -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#CCCCCC"
+        android:strokeWidth="0.8"
+        android:pathData="M66,54 L74,54 M66,57 L74,57 M66,60 L74,60" />
+    <!-- 音符装饰 -->
+    <path
+        android:fillColor="#FFD93D"
+        android:pathData="M37,62a3,3 0,1 0,6 0a3,3 0,1 0,-6 0z" />
+    <path
+        android:fillColor="#FFD93D"
+        android:pathData="M43,62 L43,50 L48,48 L48,58 L43,60 Z" />
 </vector>

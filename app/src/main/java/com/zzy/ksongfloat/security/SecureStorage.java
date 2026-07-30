@@ -29,6 +29,15 @@ public class SecureStorage {
         SecretKey sk=getOrCreateKey(); Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.DECRYPT_MODE,sk,new GCMParameterSpec(128,Base64.decode(i,Base64.NO_WRAP)));
         byte[] dec=cipher.doFinal(Base64.decode(e,Base64.NO_WRAP)); return new String(dec,StandardCharsets.UTF_8);
     }
+    /** 自动化线程安全读取，解密失败时返回空字符串而不抛异常。 */
+    public static String loadApiKeySafe(Context c) {
+        try {
+            String key = loadApiKey(c);
+            return key == null ? "" : key.trim();
+        } catch (Exception e) {
+            return "";
+        }
+    }
     public static boolean hasApiKey(Context c){ SharedPreferences sp=c.getSharedPreferences(PREF,Context.MODE_PRIVATE); return sp.contains(CIPHER)&&sp.contains(IV); }
     public static void clearApiKey(Context c){ c.getSharedPreferences(PREF,Context.MODE_PRIVATE).edit().remove(CIPHER).remove(IV).apply(); }
     private static SecretKey getOrCreateKey() throws Exception {

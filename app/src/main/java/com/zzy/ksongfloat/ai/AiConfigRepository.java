@@ -85,10 +85,15 @@ public final class AiConfigRepository {
         refresh(app);
     }
 
+    /** 自动化流水线：Base URL + API Key + Model 齐全即可，不依赖 UI 缓存或 consent 勾选。 */
+    public boolean isReadyForAutomation(Context context) {
+        return AiRuntimeConfig.resolve(context).ready;
+    }
+
     /** 实际发起 AI 请求前：需要用户同意隐私条款 */
     public boolean isReadyForRequest(Context context) {
         AiSettings s = AiSettingsRepository.load(context);
-        return isConfigured() && s.aiConsent;
+        return isReadyForAutomation(context) && s.aiConsent;
     }
 
     private static String buildMissingLabel(boolean urlOk, boolean hasKey, boolean modelOk) {
