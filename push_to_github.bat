@@ -33,7 +33,7 @@ if errorlevel 1 (
   echo Nothing to commit or commit failed.
 )
 
-for /f "usebackq delims=" %%b in (`%GIT% rev-parse --abbrev-ref HEAD`) do set "BRANCH=%%b"
+for /f "usebackq delims=" %%b in (`git -c "safe.directory=%REPO%" rev-parse --abbrev-ref HEAD`) do set "BRANCH=%%b"
 
 echo [5/5] git push origin %BRANCH% ...
 %GIT% push origin %BRANCH%
