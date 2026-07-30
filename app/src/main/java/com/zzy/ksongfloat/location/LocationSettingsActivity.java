@@ -34,7 +34,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class LocationSettingsActivity extends AppCompatActivity {
-    private TextView status, diag, injectInfo;
+    private TextView status, diag, injectInfo, mockBanner;
     private EditText lat, lng, acc, cityField;
     private CheckBox slightMove;
     private LinearLayout root;
@@ -66,6 +66,8 @@ public class LocationSettingsActivity extends AppCompatActivity {
         root.removeAllViews();
         LocationMockManager.SavedLocation cfg = LocationMockManager.load(this);
         root.addView(UiKit.title(this, "虚拟定位设置"));
+        mockBanner = UiKit.text(this, "", AppTheme.BODY_SP, AppTheme.WARNING, true);
+        root.addView(mockBanner);
         root.addView(UiKit.caption(this, "包名：" + getPackageName() + " · UID " + Process.myUid()));
 
         LinearLayout permCard = UiKit.card(this);
@@ -184,7 +186,6 @@ public class LocationSettingsActivity extends AppCompatActivity {
         }
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
-            toast("缺少精确位置权限，无法读取验证结果，但模拟位置授权可能已有效");
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 4401);
             return;
         }
@@ -198,6 +199,7 @@ public class LocationSettingsActivity extends AppCompatActivity {
         try {
             best = lm.getLastKnownLocation(LocationMockManager.PROVIDER);
             if (best == null) best = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+            if (best == null) best = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
         } catch (Exception ignored) {
         }
         if (best == null) {
@@ -207,19 +209,51 @@ public class LocationSettingsActivity extends AppCompatActivity {
         float[] dist = new float[1];
         Location.distanceBetween(target.latitude, target.longitude, best.getLatitude(), best.getLongitude(), dist);
         boolean fresh = System.currentTimeMillis() - best.getTime() < 15000;
+        String geo = reverseGeocode(best.getLatitude(), best.getLongitude());
         String mockFlag = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && best.isMock() ? " · isMock=true" : "";
         String msg = "读取坐标 " + best.getLatitude() + "," + best.getLongitude()
+                + "\nGeocoder：" + geo
                 + "\n距目标 " + (int) dist[0] + "m · " + (fresh ? "时间较新" : "时间偏旧") + mockFlag;
         if (dist[0] < 500 && fresh) {
-            toast("已注入并读取到接近目标坐标\n" + msg);
+            toast("已注入并验证\n" + msg);
+            LocationStateRepository.get().onInjecting(this, geo.isEmpty() ? target.label : geo);
         } else {
             toast("坐标已注入，但读取结果与目标仍有偏差\n" + msg);
+        }
+        refreshLabels();
+    }
+
+    private String reverseGeocode(double lat, double lng) {
+        try {
+            android.location.Geocoder geocoder = new android.location.Geocoder(this, Locale.getDefault());
+            java.util.List<android.location.Address> list = geocoder.getFromLocation(lat, lng, 1);
+            if (list == null || list.isEmpty()) return "无法解析地址";
+            android.location.Address a = list.get(0);
+            String city = a.getLocality() == null ? a.getAdminArea() : a.getLocality();
+            String district = a.getSubLocality() == null ? "" : a.getSubLocality();
+            return (city == null ? "" : city) + (district.isEmpty() ? "" : district);
+        } catch (Exception e) {
+            return "Geocoder 不可用";
         }
     }
 
     private void refreshLabels() {
         LocationStateRepository.State st = LocationStateRepository.get().getCurrent();
         MockLocationPermissionChecker.CheckResult cr = MockLocationPermissionChecker.check(this);
+        if (mockBanner != null) {
+            if (st.serviceState == LocationStateRepository.ServiceState.INJECTING
+                    || LocationMockManager.isRunning(this)) {
+                String place = st.city.isEmpty() ? st.label : st.city;
+                mockBanner.setText("【已模拟到：" + place + "】");
+                mockBanner.setTextColor(AppTheme.SUCCESS);
+            } else if (cr.canStartMockService()) {
+                mockBanner.setText("【权限已就绪，尚未启动模拟】");
+                mockBanner.setTextColor(AppTheme.WARNING);
+            } else {
+                mockBanner.setText("【未模拟到，请检查开发者选项】");
+                mockBanner.setTextColor(AppTheme.DANGER);
+            }
+        }
         if (status != null) {
             status.setText("AppOps：" + cr.appOpsMode + "\n探测：" + cr.status.name() + "\n" + cr.userLabel());
         }

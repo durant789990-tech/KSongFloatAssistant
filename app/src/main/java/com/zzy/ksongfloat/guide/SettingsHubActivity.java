@@ -23,6 +23,7 @@ public class SettingsHubActivity extends Activity {
         root.addView(UiKit.title(this, "设置"));
         addLink(root, "AI 接口设置", AiSettingsActivity.class);
         addLink(root, "自动化设置", AutomationSettingsActivity.class);
+        addLink(root, "虚拟定位设置", com.zzy.ksongfloat.location.LocationSettingsActivity.class);
         addLink(root, "权限向导", PermissionWizardActivity.class);
         addLink(root, "页面识别调试", DebugActivity.class);
         addLink(root, "互动历史", HistoryActivity.class);

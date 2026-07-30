@@ -73,13 +73,23 @@ public class FloatingWindowService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
+        startFg();
+        ensureBubbleVisible();
+        return START_NOT_STICKY;
+    }
+
+    /** 有悬浮窗权限时强制显示悬浮球。 */
+    private void ensureBubbleVisible() {
         if (!PermissionUtils.canDrawOverlays(this)) {
             toast("请先开启悬浮窗权限");
-            stopSelf();
-            return START_NOT_STICKY;
+            return;
         }
         if (bubble == null) showBubble();
-        return START_NOT_STICKY;
+        else try {
+            wm.updateViewLayout(bubble, bubbleParams);
+        } catch (Exception e) {
+            try { wm.addView(bubble, bubbleParams); } catch (Exception ignored) { showBubble(); }
+        }
     }
 
     public IBinder onBind(Intent i) { return null; }
@@ -218,28 +228,11 @@ public class FloatingWindowService extends Service {
     }
 
     private void startAutomation() {
-        if (!PermissionUtils.isAccessibilityEnabled(this)) { toast("请先开启无障碍服务"); return; }
-        if (!AiConfigRepository.get().isConfigured()) { toast("请先配置 AI 接口"); return; }
-        ForegroundAppResolver.Result fr = ForegroundAppResolver.resolve(this);
-        if (fr.presence == ForegroundAppResolver.AppPresence.OTHER_APP) {
-            toast("请先打开全民K歌（当前：" + emptyPkg(fr.packageName) + "）");
-            return;
-        }
-        if (fr.presence == ForegroundAppResolver.AppPresence.ASSISTANT_OVERLAY) {
-            toast("请切换到全民K歌窗口后再开始");
-            return;
-        }
-        String analyze = AutomationOrchestrator.get().analyzeCurrentPage(this);
-        if (!analyze.contains("CITY_USER_LIST")) {
-            toast("请先进入同城用户列表后再开始\n" + analyze);
-            return;
-        }
+        ensureBubbleVisible();
+        if (panel == null) showPanel();
         AutomationOrchestrator.get().start(this);
+        AutomationRuntime.setFloatMessage("强行流水线运行中");
         refreshFloatUi();
-    }
-
-    private static String emptyPkg(String pkg) {
-        return pkg == null || pkg.isEmpty() ? "未知" : pkg;
     }
 
     private void toggleAutomationPause() {

@@ -9,42 +9,31 @@ import android.content.Intent;
 import android.location.Location;
 import android.location.LocationManager;
 import android.os.Build;
-import android.os.Handler;
 import android.os.IBinder;
-import android.os.Looper;
 import android.os.SystemClock;
 
 import com.zzy.ksongfloat.MainActivity;
 
+import java.util.Random;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
+/** 前台服务：每秒向 GPS / NETWORK Provider 注入带漂移的模拟坐标。 */
 public class LocationMockService extends Service {
     public static final String ACTION_STOP = "com.zzy.ksongfloat.action.STOP_MOCK_LOCATION";
     private static final String CH = "mock_location";
-    private static volatile boolean injecting;
-    private Handler handler;
-    private final Runnable tick = new Runnable() {
-        @Override
-        public void run() {
-            if (injectOnce()) {
-                if (handler != null) handler.postDelayed(this, 1500);
-            }
-        }
+    private static final String[] PROVIDERS = {
+            LocationManager.GPS_PROVIDER,
+            LocationManager.NETWORK_PROVIDER,
+            LocationMockManager.PROVIDER
     };
-
-    @Override
-    public void onCreate() {
-        super.onCreate();
-        handler = new Handler(Looper.getMainLooper());
-    }
+    private static final Random RND = new Random();
+    private ScheduledExecutorService scheduler;
+    private volatile boolean injecting;
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        // 虚拟定位功能已禁用，禁止启动前台服务或注入线程
-        stopSelf();
-        return START_NOT_STICKY;
-    }
-
-    @SuppressWarnings("unused")
-    private int onStartCommandDisabled(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
             stopMock();
             stopSelf();
@@ -60,10 +49,31 @@ public class LocationMockService extends Service {
         }
         startForeground(3001, buildNotification("正在启动模拟定位…"));
         injecting = false;
-        ensureProvider();
-        handler.removeCallbacks(tick);
-        handler.post(tick);
+        ensureProviders();
+        startScheduler();
         return START_NOT_STICKY;
+    }
+
+    private void startScheduler() {
+        stopScheduler();
+        scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "mock-location-inject");
+            t.setDaemon(true);
+            return t;
+        });
+        scheduler.scheduleAtFixedRate(this::injectAll, 0, 1, TimeUnit.SECONDS);
+    }
+
+    private void injectAll() {
+        if (!injectOnce()) return;
+        LocationMockManager.SavedLocation cfg = LocationMockManager.load(this);
+        if (!injecting) {
+            injecting = true;
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm != null) {
+                nm.notify(3001, buildNotification("已模拟 · " + cfg.label));
+            }
+        }
     }
 
     private boolean injectOnce() {
@@ -71,25 +81,29 @@ public class LocationMockService extends Service {
             LocationMockManager.SavedLocation cfg = LocationMockManager.load(this);
             LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
             if (lm == null) throw new IllegalStateException("LocationManager 不可用");
-            ensureProvider();
-            Location loc = new Location(LocationMockManager.PROVIDER);
-            loc.setLatitude(cfg.latitude);
-            loc.setLongitude(cfg.longitude);
-            loc.setAccuracy(cfg.accuracy);
-            loc.setTime(System.currentTimeMillis());
-            loc.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                loc.setMock(true);
+            ensureProviders();
+            double lat = cfg.latitude + drift();
+            double lng = cfg.longitude + drift();
+            long now = System.currentTimeMillis();
+            for (String provider : PROVIDERS) {
+                try {
+                    Location loc = new Location(provider);
+                    loc.setLatitude(lat);
+                    loc.setLongitude(lng);
+                    loc.setAccuracy(Math.max(5f, cfg.accuracy));
+                    loc.setTime(now);
+                    loc.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        loc.setMock(true);
+                    }
+                    lm.setTestProviderLocation(provider, loc);
+                } catch (Exception ignored) {
+                    // 单个 Provider 失败不影响其他 Provider
+                }
             }
-            lm.setTestProviderLocation(LocationMockManager.PROVIDER, loc);
             LocationMockManager.setRunning(this, true);
-            LocationMockManager.setLastResult(this, "已注入 " + cfg.latitude + "," + cfg.longitude);
-            if (!injecting) {
-                injecting = true;
-                NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-                if (nm != null) nm.notify(3001, buildNotification(cfg.label + " · " + cfg.latitude + "," + cfg.longitude));
-            }
-            LocationStateRepository.get().onInjecting(this, "注入成功");
+            LocationMockManager.setLastResult(this, "已注入 " + lat + "," + lng);
+            LocationStateRepository.get().onInjecting(this, cfg.label);
             return true;
         } catch (SecurityException se) {
             LocationStateRepository.get().onProviderFailed(this, "SecurityException：" + se.getMessage());
@@ -104,24 +118,44 @@ public class LocationMockService extends Service {
         }
     }
 
-    private void ensureProvider() {
+    private static double drift() {
+        return (RND.nextDouble() - 0.5) * 0.0001; // ±0.00005
+    }
+
+    private void ensureProviders() {
         LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         if (lm == null) return;
-        String p = LocationMockManager.PROVIDER;
-        MockLocationPermissionChecker.removeProviderQuietly(lm, p);
-        MockLocationPermissionChecker.addTestProvider(lm, p);
-        lm.setTestProviderEnabled(p, true);
+        for (String p : PROVIDERS) {
+            try {
+                MockLocationPermissionChecker.removeProviderQuietly(lm, p);
+                MockLocationPermissionChecker.addTestProvider(lm, p);
+                lm.setTestProviderEnabled(p, true);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private void stopScheduler() {
+        if (scheduler != null) {
+            scheduler.shutdownNow();
+            scheduler = null;
+        }
     }
 
     private void stopMock() {
-        handler.removeCallbacks(tick);
+        stopScheduler();
         injecting = false;
         LocationMockManager.setRunning(this, false);
         try {
             LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
             if (lm != null) {
-                lm.setTestProviderEnabled(LocationMockManager.PROVIDER, false);
-                MockLocationPermissionChecker.removeProviderQuietly(lm, LocationMockManager.PROVIDER);
+                for (String p : PROVIDERS) {
+                    try {
+                        lm.setTestProviderEnabled(p, false);
+                        MockLocationPermissionChecker.removeProviderQuietly(lm, p);
+                    } catch (Exception ignored) {
+                    }
+                }
             }
         } catch (Exception ignored) {
         }
@@ -146,14 +180,19 @@ public class LocationMockService extends Service {
             NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
             if (nm != null) nm.createNotificationChannel(c);
         }
-        Intent stop = new Intent(this, LocationMockService.class);
-        stop.setAction(ACTION_STOP);
+        Intent open = new Intent(this, MainActivity.class);
         Notification.Builder b = Build.VERSION.SDK_INT >= 26
                 ? new Notification.Builder(this, CH) : new Notification.Builder(this);
         return b.setSmallIcon(android.R.drawable.ic_menu_mylocation)
                 .setContentTitle("K歌助手 · 模拟定位")
                 .setContentText(text)
+                .setContentIntent(android.app.PendingIntent.getActivity(this, 3002, open,
+                        android.app.PendingIntent.FLAG_UPDATE_CURRENT | pendingImmutable()))
                 .setOngoing(true)
                 .build();
+    }
+
+    private static int pendingImmutable() {
+        return Build.VERSION.SDK_INT >= 23 ? android.app.PendingIntent.FLAG_IMMUTABLE : 0;
     }
 }

@@ -38,3 +38,25 @@ dependencies {
     androidTestImplementation 'androidx.test:core:1.6.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
 }
+
+def releaseApkDir = rootProject.file('release_apk')
+
+tasks.configureEach { task ->
+    if (task.name == 'assembleDebug' || task.name == 'assembleRelease') {
+        task.doLast {
+            def variant = task.name == 'assembleDebug' ? 'debug' : 'release'
+            def src = file("${layout.buildDirectory.get()}/outputs/apk/${variant}/app-${variant}.apk")
+            if (!src.exists()) {
+                logger.lifecycle("Skip APK copy: ${src} not found")
+                return
+            }
+            releaseApkDir.mkdirs()
+            copy {
+                from src
+                into releaseApkDir
+                rename { 'KSongAssistant_latest.apk' }
+            }
+            logger.lifecycle("Copied APK -> ${releaseApkDir}/KSongAssistant_latest.apk")
+        }
+    }
+}

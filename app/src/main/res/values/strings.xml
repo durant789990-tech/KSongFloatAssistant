@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">K歌悬浮助手</string>
+    <string name="app_name">K歌打招呼助手</string>
     <string name="accessibility_desc">用于读取全民 K 歌当前页面公开文字，并在你确认后辅助填入评论或私信；不会自动发送、不会自动送礼。</string>
 </resources>

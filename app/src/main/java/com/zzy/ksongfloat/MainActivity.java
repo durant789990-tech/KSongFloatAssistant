@@ -1,7 +1,6 @@
 package com.zzy.ksongfloat;
 
 import android.Manifest;
-import android.app.AlertDialog;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
@@ -19,14 +18,13 @@ import com.zzy.ksongfloat.accessibility.AccessibilityStateRepository;
 import com.zzy.ksongfloat.accessibility.AccessibilityConnectionState;
 import com.zzy.ksongfloat.accessibility.KSongAccessibilityService;
 import com.zzy.ksongfloat.ai.AiConfigRepository;
-import com.zzy.ksongfloat.automation.AutomationGuard;
 import com.zzy.ksongfloat.automation.AutomationLog;
 import com.zzy.ksongfloat.automation.AutomationOrchestrator;
 import com.zzy.ksongfloat.automation.AutomationRuntime;
 import com.zzy.ksongfloat.automation.AutomationSettingsRepository;
-import com.zzy.ksongfloat.runtime.ForegroundAppResolver;
 import com.zzy.ksongfloat.floating.FloatingWindowService;
 import com.zzy.ksongfloat.guide.SettingsHubActivity;
+import com.zzy.ksongfloat.location.LocationStateRepository;
 import com.zzy.ksongfloat.logs.LogViewerActivity;
 import com.zzy.ksongfloat.navigation.AppNavigator;
 import com.zzy.ksongfloat.ui.MainViewModel;
@@ -57,6 +55,7 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         AccessibilityStateDetector.detect(this);
         AiConfigRepository.get().refresh(this);
+        LocationStateRepository.get().refreshPermission(this);
         vm.refresh();
     }
 
@@ -106,6 +105,7 @@ public class MainActivity extends AppCompatActivity {
         card.addView(UiKit.caption(this, "识别页面：" + state.page));
         card.addView(UiKit.caption(this, "当前引擎：" + state.engine));
         card.addView(UiKit.caption(this, "AI：" + (state.ai.configured ? "已配置" : "未配置")));
+        card.addView(UiKit.caption(this, "定位：" + state.locationStatus));
         card.addView(UiKit.caption(this, "队列待处理：" + state.queuePending));
         if (!state.currentUserName.isEmpty()) {
             card.addView(UiKit.caption(this, "当前用户：" + state.currentUserName));
@@ -152,7 +152,9 @@ public class MainActivity extends AppCompatActivity {
         });
         boolean aiOk = AiConfigRepository.get().isConfigured();
         addConditionRow(card, "AI 接口", aiOk, aiOk ? null : "去设置", () -> AppNavigator.open(this, com.zzy.ksongfloat.ai.AiSettingsActivity.class, false));
-        addConditionRow(card, "截图会话", false, "说明", () -> toast("需要 OCR 时会请求截图授权"));
+        addConditionRow(card, "虚拟定位", vm.observeDashboard().getValue() != null
+                && vm.observeDashboard().getValue().locationStatus.contains("模拟"), "去设置",
+                () -> AppNavigator.open(this, com.zzy.ksongfloat.location.LocationSettingsActivity.class, false));
         root.addView(card);
     }
 
@@ -212,46 +214,20 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startAutomationChecked() {
-        if (!PermissionUtils.canDrawOverlays(this) || !PermissionUtils.isAccessibilityEnabled(this)) {
-            new AlertDialog.Builder(this)
-                    .setTitle("无法开始自动化")
-                    .setMessage("请先开启无障碍服务与悬浮窗权限。")
-                    .setNegativeButton("取消", null)
-                    .setPositiveButton("去开启", (d, w) -> {
-                        if (!PermissionUtils.isAccessibilityEnabled(this)) SettingsNavigator.openAccessibility(this);
-                        else SettingsNavigator.openOverlay(this);
-                    })
-                    .show();
-            return;
-        }
-        if (!AiConfigRepository.get().isConfigured()) {
-            toast("请先完成 AI 接口配置（Base URL、API Key、模型）");
-            AppNavigator.open(this, com.zzy.ksongfloat.ai.AiSettingsActivity.class, false);
-            return;
-        }
-        ForegroundAppResolver.Result fr = ForegroundAppResolver.resolve(this);
-        if (fr.presence == ForegroundAppResolver.AppPresence.OTHER_APP) {
-            new AlertDialog.Builder(this)
-                    .setTitle("请先打开全民K歌")
-                    .setMessage("当前前台应用不是全民K歌（" + empty(fr.packageName, "未知") + "）。请进入全民K歌任意页面后再开始。")
-                    .setPositiveButton("知道了", null)
-                    .show();
+        if (!PermissionUtils.canDrawOverlays(this)) {
+            toast("请先开启悬浮窗权限");
+            SettingsNavigator.openOverlay(this);
             return;
         }
         startFloatingAssistant();
         AutomationOrchestrator.get().start(getApplicationContext());
-        toast("自动化已启动");
+        toast("强行自动化已启动");
         vm.refresh();
     }
 
     private void startFloatingAssistant() {
         if (!PermissionUtils.canDrawOverlays(this)) {
-            new AlertDialog.Builder(this)
-                    .setTitle("无法显示悬浮窗")
-                    .setMessage("请先开启悬浮窗权限。")
-                    .setNegativeButton("取消", null)
-                    .setPositiveButton("去开启", (d, w) -> SettingsNavigator.openOverlay(this))
-                    .show();
+            SettingsNavigator.openOverlay(this);
             return;
         }
         Intent i = new Intent(this, FloatingWindowService.class);

@@ -14,6 +14,7 @@ import com.zzy.ksongfloat.automation.AutomationRuntime;
 import com.zzy.ksongfloat.automation.AutomationSettings;
 import com.zzy.ksongfloat.automation.AutomationSettingsRepository;
 import com.zzy.ksongfloat.engine.AutomationEngineSelector;
+import com.zzy.ksongfloat.location.LocationStateRepository;
 import com.zzy.ksongfloat.runtime.ForegroundAppResolver;
 
 public class MainViewModel extends AndroidViewModel {
@@ -24,6 +25,7 @@ public class MainViewModel extends AndroidViewModel {
         super(application);
         aiRepo.attachPreferenceListener(application);
         dashboard.addSource(aiRepo.observeConfigState(), s -> publish());
+        dashboard.addSource(LocationStateRepository.get().observe(), s -> publish());
         publish();
     }
 
@@ -33,6 +35,7 @@ public class MainViewModel extends AndroidViewModel {
 
     public void refresh() {
         aiRepo.refresh(getApplication());
+        LocationStateRepository.get().refreshPermission(getApplication());
         publish();
     }
 
@@ -42,6 +45,7 @@ public class MainViewModel extends AndroidViewModel {
         AutomationSettings auto = AutomationSettingsRepository.load(app);
         AutomationRuntime.UiStatus st = AutomationRuntime.getStatus();
         String fg = ForegroundAppResolver.displayPackage(app);
+        String loc = LocationStateRepository.get().getCurrent().summaryLabel();
         AutomationOrchestrator orch = AutomationOrchestrator.get();
         dashboard.postValue(new DashboardState(
                 st,
@@ -54,6 +58,7 @@ public class MainViewModel extends AndroidViewModel {
                 AutomationRuntime.getFloatMessage(),
                 ai,
                 auto,
+                loc,
                 orch.isRunning(),
                 orch.isPaused(),
                 orch.getTaskQueue() == null ? 0 : orch.getTaskQueue().pendingCount(),
@@ -72,6 +77,7 @@ public class MainViewModel extends AndroidViewModel {
         public final String message;
         public final AiConfigState ai;
         public final AutomationSettings automation;
+        public final String locationStatus;
         public final boolean running;
         public final boolean paused;
         public final int queuePending;
@@ -80,7 +86,8 @@ public class MainViewModel extends AndroidViewModel {
         public DashboardState(AutomationRuntime.UiStatus status, String page, String foregroundPackage,
                               String engine, String lastAction, int processed, int consecutiveFail,
                               String message, AiConfigState ai, AutomationSettings automation,
-                              boolean running, boolean paused, int queuePending, String currentUserName) {
+                              String locationStatus, boolean running, boolean paused,
+                              int queuePending, String currentUserName) {
             this.status = status;
             this.page = page;
             this.foregroundPackage = foregroundPackage;
@@ -91,6 +98,7 @@ public class MainViewModel extends AndroidViewModel {
             this.message = message;
             this.ai = ai;
             this.automation = automation;
+            this.locationStatus = locationStatus == null ? "未启用" : locationStatus;
             this.running = running;
             this.paused = paused;
             this.queuePending = queuePending;
