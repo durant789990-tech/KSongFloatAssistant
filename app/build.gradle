@@ -30,6 +30,8 @@ dependencies {
     implementation 'com.google.mlkit:text-recognition-chinese:16.0.1'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'androidx.activity:activity:1.9.3'
+    implementation 'dev.rikka.shizuku:api:13.1.5'
+    implementation 'dev.rikka.shizuku:provider:13.1.5'
     implementation 'androidx.room:room-runtime:2.6.1'
     annotationProcessor 'androidx.room:room-compiler:2.6.1'
     testImplementation 'junit:junit:4.13.2'
@@ -54,9 +56,9 @@ tasks.configureEach { task ->
             copy {
                 from src
                 into releaseApkDir
-                rename { 'KSongAssistant_latest.apk' }
+                rename { 'KSongAssistant.apk' }
             }
-            logger.lifecycle("Copied APK -> ${releaseApkDir}/KSongAssistant_latest.apk")
+            logger.lifecycle("Copied APK -> ${releaseApkDir}/KSongAssistant.apk")
         }
     }
 }

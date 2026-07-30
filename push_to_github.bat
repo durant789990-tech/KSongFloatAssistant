@@ -20,10 +20,11 @@ if not exist "app\build\outputs\apk\debug\app-debug.apk" (
   exit /b 1
 )
 copy /Y "app\build\outputs\apk\debug\app-debug.apk" "release_apk\KSongAssistant.apk" >nul
+if exist "release_apk\KSongAssistant_latest.apk" del /F /Q "release_apk\KSongAssistant_latest.apk"
 
 echo [3/4] git add and commit ...
 %GIT% add .
-%GIT_USER% commit -m "Fix AI key execution pass and update launcher icon"
+%GIT_USER% commit -m "Fix text injection failure and filter navigation bar clicks"
 if errorlevel 1 (
   echo Nothing to commit or commit failed.
 )

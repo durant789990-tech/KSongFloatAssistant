@@ -134,7 +134,9 @@ public class AutomationOrchestrator {
 
                 setPhase(AutomationPhase.SCANNING, "扫描互动节点 #" + loopCount);
                 try {
-                    interactCurrentScreen(KSongAccessibilityService.getInstance());
+                    KSongAccessibilityService svc = KSongAccessibilityService.getInstance();
+                    NavigationGuard.recoverIfOnMessagePage(svc);
+                    interactCurrentScreen(svc);
                 } catch (Exception e) {
                     AutomationLog.warn("互动异常（继续）：" + e.getMessage());
                 }
@@ -192,9 +194,10 @@ public class AutomationOrchestrator {
         }
 
         try {
+            NavigationGuard.recoverIfOnMessagePage(svc);
             boolean opened = actions.openInputEntry();
             if (!opened) {
-                actions.clickByTexts("评论", "私信", "发消息");
+                actions.clickByTexts("说点什么", "写评论", "发表评论");
             }
             actions.clickInputField(true);
         } catch (Exception e) {

@@ -16,7 +16,7 @@ public class ShizukuAutomationEngine implements AutomationEngine {
 
     @Override
     public boolean isAvailable() {
-        return false;
+        return ShizukuHelper.isReady();
     }
 
     @Override

@@ -4,12 +4,16 @@ import android.accessibilityservice.AccessibilityService;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.accessibility.AccessibilityNodeInfo;
 
 import com.zzy.ksongfloat.accessibility.KSongAccessibilityService;
+import com.zzy.ksongfloat.shizuku.ShizukuHelper;
 
 public class NodeActionController {
+    private static final int ACTION_IME_ENTER = 0x0100000d;
+
     public static class FillResult {
         public boolean focused;
         public boolean filled;
@@ -22,7 +26,7 @@ public class NodeActionController {
             "发送", "发布", "提交", "发表", "发送消息", "发表评论", "完成", "确定"
     };
     private static final String[] INPUT_HINTS = {
-            "打个招呼", "说点什么", "评论", "输入", "私信", "消息", "聊天", "写评论", "请输入", "留言"
+            "打个招呼", "说点什么", "评论", "输入", "私信", "聊天", "写评论", "请输入", "留言"
     };
     private static final String[] INPUT_ENTRY_KEYWORDS = {
             "打个招呼", "评论", "说点什么", "写评论", "发表评论", "留言", "输入"
@@ -61,7 +65,6 @@ public class NodeActionController {
         }
     }
 
-    /** 先点击输入入口，再聚焦输入框。 */
     public boolean openInputEntry() {
         if (clickByTexts(INPUT_ENTRY_KEYWORDS)) {
             AutomationLog.info("已点击输入入口");
@@ -70,7 +73,6 @@ public class NodeActionController {
         return clickInputField(false);
     }
 
-    /** 定位并点击输入框节点。 */
     public boolean clickInputField(boolean requireEditable) {
         AccessibilityNodeInfo root = null;
         NodeFinder.Match field = null;
@@ -80,7 +82,12 @@ public class NodeActionController {
             if (field == null || field.node == null) {
                 AccessibilityNodeInfo focused = root == null ? null : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
                 if (focused != null && (!requireEditable || focused.isEditable() || focused.isFocusable())) {
-                    field = new NodeFinder.Match(focused, "focus", "");
+                    int[] size = ScreenBoundsGuard.screenSize(root);
+                    if (ScreenBoundsGuard.isSafeNode(focused, size[0], size[1])) {
+                        field = new NodeFinder.Match(focused, "focus", "");
+                    } else {
+                        NodeFinder.recycle(focused);
+                    }
                 } else {
                     NodeFinder.recycle(focused);
                 }
@@ -104,7 +111,6 @@ public class NodeActionController {
         return r.filled;
     }
 
-    /** 填入文本并始终尝试点击发送/提交。 */
     public FillResult fillInputAndSend(String text) {
         return fillInputAndSend(text, true);
     }
@@ -114,8 +120,13 @@ public class NodeActionController {
         if (!r.filled) return r;
         if (autoSend) {
             r.sent = clickSendButton();
-            if (r.sent) AutomationLog.info("已点击发送按钮");
-            else AutomationLog.warn("文本已填入，但未找到发送按钮");
+            if (r.sent) {
+                AutomationLog.info("已点击发送按钮");
+            } else {
+                r.sent = sendEnterKey();
+                if (r.sent) AutomationLog.info("已通过回车键发送");
+                else AutomationLog.warn("未找到发送按钮，回车发送也失败");
+            }
         }
         return r;
     }
@@ -134,7 +145,12 @@ public class NodeActionController {
             if (editable == null) {
                 AccessibilityNodeInfo focused = root == null ? null : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
                 if (focused != null && (focused.isEditable() || focused.isFocusable())) {
-                    editable = new NodeFinder.Match(focused, "focus", "");
+                    int[] size = ScreenBoundsGuard.screenSize(root);
+                    if (ScreenBoundsGuard.isSafeNode(focused, size[0], size[1])) {
+                        editable = new NodeFinder.Match(focused, "focus", "");
+                    } else {
+                        NodeFinder.recycle(focused);
+                    }
                 } else {
                     NodeFinder.recycle(focused);
                 }
@@ -144,10 +160,27 @@ public class NodeActionController {
                 return result;
             }
             AccessibilityNodeInfo node = editable.node;
-            if (clickFieldFirst || !node.isFocused()) {
-                result.focused = performClick(node);
-                if (!result.focused) node.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+
+            if (ShizukuHelper.isReady()) {
+                node.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+                sleepQuiet(150);
+                if (ShizukuHelper.inputText(text)) {
+                    result.filled = true;
+                    result.focused = true;
+                    result.method = "SHIZUKU_INPUT_TEXT";
+                    return result;
+                }
+                AutomationLog.warn("Shizuku input text 失败，降级无障碍填字");
             }
+
+            putClipboard(text);
+            if (clickFieldFirst || !node.isFocused()) {
+                result.focused = node.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                if (!result.focused) result.focused = performClick(node);
+                if (!result.focused) node.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+                sleepQuiet(300);
+            }
+
             Bundle args = new Bundle();
             args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
             if (node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
@@ -155,11 +188,15 @@ public class NodeActionController {
                 result.method = "ACTION_SET_TEXT";
                 return result;
             }
-            if (pasteViaClipboard(node, text)) {
+
+            node.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+            sleepQuiet(120);
+            if (node.performAction(AccessibilityNodeInfo.ACTION_PASTE)) {
                 result.filled = true;
                 result.method = "ACTION_PASTE";
                 return result;
             }
+
             AccessibilityNodeInfo parent = node.getParent();
             try {
                 if (parent != null) {
@@ -168,6 +205,11 @@ public class NodeActionController {
                     if (parent.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, parentArgs)) {
                         result.filled = true;
                         result.method = "PARENT_SET_TEXT";
+                        return result;
+                    }
+                    if (parent.performAction(AccessibilityNodeInfo.ACTION_PASTE)) {
+                        result.filled = true;
+                        result.method = "PARENT_PASTE";
                         return result;
                     }
                 }
@@ -191,6 +233,35 @@ public class NodeActionController {
         } finally {
             NodeFinder.recycle(root);
         }
+    }
+
+    public boolean sendEnterKey() {
+        if (ShizukuHelper.isReady() && ShizukuHelper.keyEnter()) {
+            return true;
+        }
+        AccessibilityNodeInfo root = null;
+        AccessibilityNodeInfo focused = null;
+        try {
+            root = freshRoot();
+            focused = root == null ? null : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+            if (focused != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    if (focused.performAction(ACTION_IME_ENTER)) {
+                        return true;
+                    }
+                }
+                Bundle args = new Bundle();
+                args.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT,
+                        AccessibilityNodeInfo.MOVEMENT_GRANULARITY_LINE);
+                if (focused.performAction(AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY, args)) {
+                    return clickSendButton();
+                }
+            }
+        } finally {
+            NodeFinder.recycle(focused);
+            NodeFinder.recycle(root);
+        }
+        return false;
     }
 
     public boolean back() {
@@ -217,24 +288,21 @@ public class NodeActionController {
         return false;
     }
 
-    private boolean pasteViaClipboard(AccessibilityNodeInfo node, String text) {
+    private void putClipboard(String text) {
         Context ctx = service.getApplicationContext();
         ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
-        if (cm == null) return false;
-        ClipData old = cm.getPrimaryClip();
+        if (cm == null) return;
         try {
             cm.setPrimaryClip(ClipData.newPlainText("auto_fill", text));
-            node.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
-            return node.performAction(AccessibilityNodeInfo.ACTION_PASTE);
-        } catch (Exception e) {
-            return false;
-        } finally {
-            if (old != null) {
-                try {
-                    cm.setPrimaryClip(old);
-                } catch (Exception ignored) {
-                }
-            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static void sleepQuiet(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 }

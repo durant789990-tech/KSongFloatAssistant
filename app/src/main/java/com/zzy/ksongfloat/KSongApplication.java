@@ -5,6 +5,7 @@ import android.app.Application;
 import com.zzy.ksongfloat.ai.AiConfigRepository;
 import com.zzy.ksongfloat.automation.AutomationSessionManager;
 import com.zzy.ksongfloat.location.LocationStateRepository;
+import com.zzy.ksongfloat.shizuku.ShizukuHelper;
 import com.zzy.ksongfloat.permission.PermissionStateRepository;
 
 public class KSongApplication extends Application {
@@ -15,5 +16,6 @@ public class KSongApplication extends Application {
         PermissionStateRepository.get().refresh(this);
         LocationStateRepository.get().refreshPermission(this);
         AutomationSessionManager.get().resetOnAppStart();
+        ShizukuHelper.init(this);
     }
 }
