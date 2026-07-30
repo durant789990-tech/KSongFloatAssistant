@@ -1,0 +1,65 @@
+package com.zzy.ksongfloat.util;
+
+import android.accessibilityservice.AccessibilityServiceInfo;
+import android.app.NotificationManager;
+import android.content.Context;
+import android.os.Build;
+import android.os.PowerManager;
+import android.provider.Settings;
+import android.text.TextUtils;
+import android.view.accessibility.AccessibilityManager;
+
+import com.zzy.ksongfloat.accessibility.KSongAccessibilityService;
+
+import java.util.List;
+
+public class PermissionUtils {
+    public static boolean canDrawOverlays(Context c) {
+        return Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(c);
+    }
+
+    public static boolean isNotificationEnabled(Context c) {
+        if (Build.VERSION.SDK_INT < 24) return true;
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        return nm != null && nm.areNotificationsEnabled();
+    }
+
+    public static boolean isBatteryIgnoring(Context c) {
+        if (Build.VERSION.SDK_INT < 23) return true;
+        PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
+        return pm != null && pm.isIgnoringBatteryOptimizations(c.getPackageName());
+    }
+
+    public static boolean isAccessibilityEnabled(Context c) {
+        AccessibilityManager am = (AccessibilityManager) c.getSystemService(Context.ACCESSIBILITY_SERVICE);
+        if (am == null) return false;
+        List<AccessibilityServiceInfo> list = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
+        String id = c.getPackageName() + "/" + KSongAccessibilityService.class.getName();
+        for (AccessibilityServiceInfo info : list) {
+            if (info.getId() != null && TextUtils.equals(info.getId(), id)) return true;
+        }
+        return false;
+    }
+
+    public static boolean isCaptureAuthorized(Context c) {
+        return c.getSharedPreferences("runtime_state", Context.MODE_PRIVATE).getBoolean("capture_authorized", false);
+    }
+
+    public static void setCaptureAuthorized(Context c, boolean value) {
+        c.getSharedPreferences("runtime_state", Context.MODE_PRIVATE).edit().putBoolean("capture_authorized", value).apply();
+    }
+
+    public static boolean hasRequiredForFullRun(Context c) {
+        return canDrawOverlays(c) && isAccessibilityEnabled(c) && isNotificationEnabled(c);
+    }
+
+    public static String missingRequiredText(Context c) {
+        StringBuilder sb = new StringBuilder();
+        if (!canDrawOverlays(c)) sb.append("??????");
+        if (!isAccessibilityEnabled(c)) sb.append("??????");
+        if (!isNotificationEnabled(c)) sb.append("?????");
+        if (sb.length() == 0) return "";
+        sb.setLength(sb.length() - 1);
+        return sb.toString();
+    }
+}

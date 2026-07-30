@@ -1,0 +1,1 @@
+package com.zzy.ksongfloat.ai; public class AiSuggestionValidationResult { public final boolean allowed; public final String reason; public AiSuggestionValidationResult(boolean a,String r){allowed=a;reason=r;} }

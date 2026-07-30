@@ -1,0 +1,24 @@
+package com.zzy.ksongfloat.automation;
+
+public enum AutomationPhase {
+    IDLE,
+    PRECHECK,
+    SCANNING,
+    ANALYZING,
+    EXECUTING,
+    WAITING_NEARBY_LIST,
+    OPENING_USER,
+    EXTRACTING_PROFILE,
+    REQUESTING_AI,
+    FOLLOWING,
+    OPENING_COMMENT,
+    FILLING_COMMENT,
+    OPENING_PM,
+    FILLING_PM,
+    GOING_BACK,
+    SCROLLING_LIST,
+    RECOVERING,
+    PAUSED,
+    STOPPED,
+    ERROR
+}

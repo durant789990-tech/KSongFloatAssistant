@@ -1,0 +1,1 @@
+package com.zzy.ksongfloat.ai.model; public class SuggestionItem { public String text=""; public String reason=""; public boolean blocked=false; public String riskReason=""; public SuggestionItem(){} public SuggestionItem(String t,String r){text=t==null?"":t;reason=r==null?"":r;} }

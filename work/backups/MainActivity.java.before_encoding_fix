@@ -1,0 +1,155 @@
+package com.zzy.ksongfloat;
+
+import android.Manifest;
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.graphics.Color;
+import android.media.projection.MediaProjectionManager;
+import android.os.Build;
+import android.os.Bundle;
+import android.provider.Settings;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.zzy.ksongfloat.floating.FloatingWindowService;
+import com.zzy.ksongfloat.util.PermissionUtils;
+import com.zzy.ksongfloat.util.SettingsNavigator;
+
+public class MainActivity extends Activity {
+    private static final int REQ_CAPTURE = 7101;
+    private LinearLayout permissionList;
+    private TextView missingView;
+
+    @Override protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        buildUi();
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        refreshPermissions();
+    }
+
+    private void buildUi() {
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(18), dp(28), dp(18), dp(28));
+        root.setBackgroundColor(Color.rgb(245, 247, 252));
+        scroll.addView(root);
+
+        TextView title = text("K?????", 26, Color.rgb(20, 26, 44), true);
+        root.addView(title);
+        TextView sub = text("????????? + ??????????????????????/??????????????????", 14, Color.rgb(95, 104, 128), false);
+        sub.setPadding(0, dp(8), 0, dp(14));
+        root.addView(sub);
+
+        missingView = text("?????...", 14, Color.rgb(120, 68, 0), true);
+        missingView.setPadding(dp(14), dp(12), dp(14), dp(12));
+        missingView.setBackground(Rounded.bg(Color.rgb(255, 247, 224), dp(14), Color.rgb(245, 203, 92), 1));
+        root.addView(missingView, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView pTitle = text("????", 20, Color.rgb(20, 26, 44), true);
+        pTitle.setPadding(0, dp(18), 0, dp(10));
+        root.addView(pTitle);
+
+        permissionList = new LinearLayout(this);
+        permissionList.setOrientation(LinearLayout.VERTICAL);
+        root.addView(permissionList);
+
+        Button start = primaryButton("?????????");
+        start.setOnClickListener(v -> startFloatingChecked());
+        root.addView(start);
+
+        Button stop = secondaryButton("???????");
+        stop.setOnClickListener(v -> stopService(new Intent(this, FloatingWindowService.class)));
+        root.addView(stop);
+
+        TextView note = text("????????????????????? OCR ?????????????????????????????????/??????????????????????", 13, Color.rgb(95, 104, 128), false);
+        note.setPadding(0, dp(12), 0, 0);
+        root.addView(note);
+        setContentView(scroll);
+    }
+
+    private void refreshPermissions() {
+        if (permissionList == null) return;
+        permissionList.removeAllViews();
+        addPermissionRow("?????", PermissionUtils.canDrawOverlays(this), "???", () -> SettingsNavigator.openOverlay(this));
+        addPermissionRow("???????", PermissionUtils.isAccessibilityEnabled(this), "???", () -> SettingsNavigator.openAccessibility(this));
+        addPermissionRow("????", PermissionUtils.isNotificationEnabled(this), "???", () -> {
+            if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 3301);
+            else SettingsNavigator.openNotification(this);
+        });
+        addPermissionRow("????/????", PermissionUtils.isCaptureAuthorized(this), "????", this::requestCapturePermission);
+        addPermissionRow("???????", PermissionUtils.isBatteryIgnoring(this), "???", () -> SettingsNavigator.openBattery(this));
+        addPermissionRow("??????????", false, "????", () -> SettingsNavigator.openMiuiBackgroundGuide(this));
+
+        String missing = PermissionUtils.missingRequiredText(this);
+        if (missing.length() == 0) {
+            missingView.setText("??????????????????/OCR ?????????????");
+            missingView.setTextColor(Color.rgb(20, 100, 55));
+            missingView.setBackground(Rounded.bg(Color.rgb(226, 255, 238), dp(14), Color.rgb(90, 210, 135), 1));
+        } else {
+            missingView.setText("???????" + missing + "??????????????");
+            missingView.setTextColor(Color.rgb(120, 68, 0));
+            missingView.setBackground(Rounded.bg(Color.rgb(255, 247, 224), dp(14), Color.rgb(245, 203, 92), 1));
+        }
+    }
+
+    private void addPermissionRow(String name, boolean enabled, String action, Runnable click) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(dp(14), dp(12), dp(12), dp(12));
+        row.setBackground(Rounded.bg(Color.WHITE, dp(14), Color.rgb(226, 231, 242), 1));
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, -2);
+        rowLp.setMargins(0, 0, 0, dp(10));
+        row.setLayoutParams(rowLp);
+
+        TextView tv = text(name + "\n" + (enabled ? "???" : "???"), 14, enabled ? Color.rgb(20, 100, 55) : Color.rgb(165, 82, 0), true);
+        row.addView(tv, new LinearLayout.LayoutParams(0, -2, 1));
+        Button b = miniButton(enabled ? "???" : action);
+        b.setOnClickListener(v -> click.run());
+        row.addView(b, new LinearLayout.LayoutParams(dp(92), dp(42)));
+        permissionList.addView(row);
+    }
+
+    private void requestCapturePermission() {
+        try {
+            MediaProjectionManager mpm = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+            if (mpm == null) { toast("??????????????????"); return; }
+            startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE);
+        } catch (Exception e) {
+            toast("?????????????????????????????????????????/??????" + e.getMessage());
+        }
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_CAPTURE) {
+            boolean ok = resultCode == RESULT_OK && data != null;
+            PermissionUtils.setCaptureAuthorized(this, ok);
+            toast(ok ? "?????????????????OCR ????????" : "???????");
+            refreshPermissions();
+        }
+    }
+
+    private void startFloatingChecked() {
+        String missing = PermissionUtils.missingRequiredText(this);
+        if (missing.length() > 0) { toast("????????????" + missing); refreshPermissions(); return; }
+        Intent i = new Intent(this, FloatingWindowService.class);
+        if (Build.VERSION.SDK_INT >= 26) startForegroundService(i); else startService(i);
+        toast("?????????????????????????????????? K ?????? ");
+    }
+
+    private Button primaryButton(String s) { Button b = baseButton(s); b.setBackground(Rounded.bg(Color.rgb(108, 92, 231), dp(14), 0, 0)); return b; }
+    private Button secondaryButton(String s) { Button b = baseButton(s); b.setBackground(Rounded.bg(Color.rgb(92, 101, 125), dp(14), 0, 0)); return b; }
+    private Button baseButton(String s) { Button b = new Button(this); b.setText(s); b.setAllCaps(false); b.setTextSize(15); b.setTextColor(Color.WHITE); LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(52)); lp.setMargins(0, dp(4), 0, dp(10)); b.setLayoutParams(lp); return b; }
+    private Button miniButton(String s) { Button b = new Button(this); b.setText(s); b.setAllCaps(false); b.setTextSize(12); b.setTextColor(Color.WHITE); b.setBackground(Rounded.bg(Color.rgb(96, 112, 170), dp(10), 0, 0)); return b; }
+    private TextView text(String s, int sp, int color, boolean bold) { TextView t = new TextView(this); t.setText(s); t.setTextSize(sp); t.setTextColor(color); if (bold) t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); t.setLineSpacing(0, 1.15f); return t; }
+    private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_LONG).show(); }
+    private int dp(int v) { return (int)(v * getResources().getDisplayMetrics().density + 0.5f); }
+}

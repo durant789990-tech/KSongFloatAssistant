@@ -1,0 +1,1 @@
+package com.zzy.ksongfloat.classifier; public class PageEvidence { public final String source, text; public final double weight; public PageEvidence(String source,String text,double weight){this.source=source;this.text=text;this.weight=weight;} public String toString(){return source+":"+text+"("+weight+")";} }

@@ -1,0 +1,1 @@
+package com.zzy.ksongfloat.ai; public class AiError { public final String type, message, suggestion; public final int httpCode; public AiError(String t,String m,String s,int c){type=t;message=m;suggestion=s;httpCode=c;} }

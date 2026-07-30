@@ -1,0 +1,1 @@
+package com.zzy.ksongfloat.ai; public class AiRequest { public final String url, apiKey, body; public final int timeoutSeconds; public AiRequest(String u,String k,String b,int t){url=u;apiKey=k;body=b;timeoutSeconds=t;} }

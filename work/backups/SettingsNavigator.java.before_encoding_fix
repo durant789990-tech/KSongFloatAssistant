@@ -1,0 +1,58 @@
+package com.zzy.ksongfloat.util;
+
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
+import android.provider.Settings;
+import android.widget.Toast;
+
+public class SettingsNavigator {
+    public static void openOverlay(Activity a) {
+        try {
+            Intent i = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + a.getPackageName()));
+            a.startActivity(i);
+        } catch (Exception e) { showMiuiGuide(a, "?????", "?? ? ???? ? ???? ? ?????? ? K????? ? ?????"); }
+    }
+
+    public static void openAccessibility(Activity a) {
+        try { a.startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); }
+        catch (Exception e) { showMiuiGuide(a, "?????", "?? ? ???? ? ??? ? ?????? ? K????? ? ??"); }
+    }
+
+    public static void openNotification(Activity a) {
+        try {
+            Intent i = new Intent();
+            if (Build.VERSION.SDK_INT >= 26) {
+                i.setAction(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                i.putExtra(Settings.EXTRA_APP_PACKAGE, a.getPackageName());
+            } else {
+                i.setAction(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                i.setData(Uri.parse("package:" + a.getPackageName()));
+            }
+            a.startActivity(i);
+        } catch (Exception e) { showMiuiGuide(a, "????", "?? ? ?????? ? ?????? ? K????? ? ????"); }
+    }
+
+    public static void openBattery(Activity a) {
+        try {
+            Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            i.setData(Uri.parse("package:" + a.getPackageName()));
+            a.startActivity(i);
+        } catch (Exception e) {
+            try {
+                Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + a.getPackageName()));
+                a.startActivity(i);
+            } catch (Exception ignored) { showMiuiGuide(a, "????", "?? ? ????? ? ?????? ? K????? ? ???"); }
+        }
+    }
+
+    public static void openMiuiBackgroundGuide(Activity a) {
+        showMiuiGuide(a, "??????/???", "?? ? ???? ? ???? ? ????? ? ?? K??????????????????????????????");
+    }
+
+    public static void showMiuiGuide(Context c, String title, String text) {
+        Toast.makeText(c, title + "?" + text, Toast.LENGTH_LONG).show();
+    }
+}

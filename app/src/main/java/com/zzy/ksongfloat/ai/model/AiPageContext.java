@@ -1,0 +1,1 @@
+package com.zzy.ksongfloat.ai.model; import java.util.*; public class AiPageContext { public String pageType="UNKNOWN", packageName="", windowTitle="", visibleText="", detectedNickname=""; public double pageConfidence=0; public List<String> resourceIds=new ArrayList<>(), contentDescriptions=new ArrayList<>(), detectedSongTitles=new ArrayList<>(); }

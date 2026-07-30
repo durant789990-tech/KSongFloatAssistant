@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand">#6C5CE7</color>
+    <color name="success">#228B54</color>
+    <color name="warning">#D27814</color>
+    <color name="danger">#D24646</color>
+</resources>

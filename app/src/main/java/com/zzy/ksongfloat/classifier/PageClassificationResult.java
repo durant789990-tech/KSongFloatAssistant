@@ -1,0 +1,3 @@
+package com.zzy.ksongfloat.classifier;
+import java.util.ArrayList; import java.util.List;
+public class PageClassificationResult { public final PageType pageType; public final double confidence; public final List<PageEvidence> evidence; public final List<String>warnings; public final String detectedNickname; public final List<String> detectedSongTitles; public PageClassificationResult(PageType t,double c,List<PageEvidence>e,List<String>w,String n,List<String>s){pageType=t;confidence=c;evidence=e==null?new ArrayList<>():e;warnings=w==null?new ArrayList<>():w;detectedNickname=n==null?"":n;detectedSongTitles=s==null?new ArrayList<>():s;} }

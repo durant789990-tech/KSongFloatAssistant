@@ -1,0 +1,51 @@
+package com.zzy.ksongfloat.accessibility;
+
+import android.accessibilityservice.AccessibilityService;
+import android.os.Bundle;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
+import java.util.ArrayList;
+import java.util.List;
+
+public class KSongAccessibilityService extends AccessibilityService {
+    public static final String KSONG_PACKAGE_HINT_1 = "com.tencent.karaoke";
+    public static final String KSONG_PACKAGE_HINT_2 = "karaoke";
+    private static volatile String foregroundPackage = "";
+    private static volatile String pageSummary = "???????????";
+    private static volatile boolean connected = false;
+    private final AccessibilityTextExtractor extractor = new AccessibilityTextExtractor();
+    private static volatile KSongAccessibilityService instance;
+
+    @Override protected void onServiceConnected() { instance = this; connected = true; pageSummary = "??????????????? K ?"; }
+    @Override public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (event == null) return;
+        if (event.getPackageName() != null) foregroundPackage = event.getPackageName().toString();
+        AccessibilityNodeInfo root = null;
+        try {
+            root = getRootInActiveWindow();
+            boolean ksong = isKSongPackage(foregroundPackage);
+            AccessibilitySnapshot snapshot = extractor.extract(foregroundPackage, event.getClassName()==null?"":event.getClassName().toString(), root, ksong);
+            AccessibilitySnapshotRepository.get().update(snapshot);
+            if (!ksong) { pageSummary = foregroundPackage + "\n??? K ???"; return; }
+            pageSummary = foregroundPackage + "\n" + join(snapshot.allVisibleTexts, 220);
+        } catch (Exception e) { pageSummary = "???????" + (e.getMessage()==null?e.getClass().getSimpleName():e.getMessage()); }
+        finally { try { if(root!=null) root.recycle(); } catch(Exception ignored){} }
+    }
+    @Override public void onInterrupt() { connected = false; pageSummary = "????????????????"; }
+    @Override public void onDestroy() { if(instance==this) instance=null; connected = false; AccessibilitySnapshotRepository.get().clear(); super.onDestroy(); }
+    public static boolean isConnected() { return connected; }
+    public static String getForegroundPackage() { return foregroundPackage == null ? "" : foregroundPackage; }
+    public static boolean isKSongForeground() { return isKSongPackage(getForegroundPackage()); }
+    public static boolean isKSongPackage(String p){ String s=p==null?"":p.toLowerCase(); return s.contains(KSONG_PACKAGE_HINT_1) || s.contains(KSONG_PACKAGE_HINT_2); }
+    public static String getPageSummary() { return pageSummary == null || pageSummary.length() == 0 ? "????" : pageSummary; }
+    public static String getRoughPageType() { return "??? PageClassifier ????"; }
+    public static String canFillText(android.content.Context c, TextFillRequest r){ KSongAccessibilityService s=instance; if(s==null) return "????????"; return new TextInputController(s).canFill(c,r); }
+    public static boolean fillText(TextFillRequest r){ KSongAccessibilityService s=instance; return s!=null && new TextInputController(s).fill(r); }
+    public boolean fillFocusedEditable(String text) {
+        if (!isKSongForeground()) return false;
+        AccessibilityNodeInfo root = getRootInActiveWindow(); AccessibilityNodeInfo focused = null;
+        try { focused = root == null ? null : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT); if (focused == null || !focused.isEditable()) return false; Bundle args = new Bundle(); args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text); return focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args); }
+        finally { try{ if(focused!=null) focused.recycle(); }catch(Exception ignored){} try{ if(root!=null) root.recycle(); }catch(Exception ignored){} }
+    }
+    private static String join(List<String> texts, int maxLen) { StringBuilder sb=new StringBuilder(); if(texts!=null) for(String t:texts){ if(sb.length()+t.length()+3>maxLen) break; if(sb.length()>0) sb.append(" | "); sb.append(t);} return sb.toString(); }
+}

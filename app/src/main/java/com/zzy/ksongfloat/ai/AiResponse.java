@@ -1,0 +1,1 @@
+package com.zzy.ksongfloat.ai; public class AiResponse { public final int httpCode; public final String content, rawSummary, model; public final long elapsedMs; public AiResponse(int c,String content,String raw,String model,long ms){this.httpCode=c;this.content=content;this.rawSummary=raw;this.model=model;this.elapsedMs=ms;} }

@@ -1,0 +1,1 @@
+package com.zzy.ksongfloat.accessibility; import com.zzy.ksongfloat.classifier.PageType; public class TextFillRequest { public final String text, type; public final PageType pageType; public final boolean append; public TextFillRequest(String text,String type,PageType pageType,boolean append){this.text=text;this.type=type;this.pageType=pageType;this.append=append;} }

@@ -1,0 +1,2 @@
+package com.zzy.ksongfloat.ai;
+public class AiSettings { public String baseUrl=""; public String model=""; public int timeoutSeconds=60; public double temperature=0.7; public int maxTokens=1200; public boolean strictJson=false; public boolean allowOcrText=true; public boolean allowAccessibilityText=true; public String userStyle="自然、礼貌、简短"; public String customPrompt=""; public boolean aiConsent=false; public boolean isUsable(){return baseUrl!=null&&!baseUrl.trim().isEmpty()&&model!=null&&!model.trim().isEmpty()&&aiConsent;} }
