@@ -63,8 +63,10 @@ public final class LocationStateRepository {
                 case STARTING:
                     return "正在启动";
                 case PERMISSION_MISSING:
+                    if (!lastError.isEmpty()) return lastError;
                     return "模拟权限未授权";
                 case PROVIDER_FAILED:
+                    if (!lastError.isEmpty()) return lastError;
                     return "Provider 初始化失败";
                 case SERVICE_FAILED:
                     return "服务启动失败";
@@ -134,6 +136,14 @@ public final class LocationStateRepository {
         LocationMockManager.SavedLocation cfg = LocationMockManager.load(ctx);
         MockLocationPermissionChecker.CheckResult cr = MockLocationPermissionChecker.check(ctx);
         publish(ServiceState.PROVIDER_FAILED, cr.status, cfg, cr, err, cached.lastInjectAt);
+    }
+
+    public void onMockPermissionRevoked(Context ctx, String hint) {
+        LocationMockManager.SavedLocation cfg = LocationMockManager.load(ctx);
+        MockLocationPermissionChecker.CheckResult cr = MockLocationPermissionChecker.check(ctx);
+        String msg = hint == null || hint.isEmpty() ? "请在开发者选项中重新勾选本应用" : hint;
+        publish(ServiceState.PERMISSION_MISSING, MockLocationPermissionChecker.MockPermissionStatus.PROBE_SECURITY_DENIED,
+                cfg, cr, msg, cached.lastInjectAt);
     }
 
     private void publish(ServiceState st, MockLocationPermissionChecker.MockPermissionStatus perm,

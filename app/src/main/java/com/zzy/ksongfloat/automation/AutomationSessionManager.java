@@ -15,7 +15,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 会话生命周期与 emergencyStop 唯一入口。
+ * 会话生命周期。强行流水线模式下不再通过 emergencyStop 终止 worker。
  */
 public final class AutomationSessionManager {
     public static class StateEvent {
@@ -72,7 +72,7 @@ public final class AutomationSessionManager {
     }
 
     public AutomationSession beginSession(Context context) {
-        emergencyStopInternal("新会话替换旧会话", false);
+        releasePreviousSessionResources();
         AutomationSession session = AutomationSession.createNew();
         session.state = AutomationSession.State.PRECHECK;
         current = session;
@@ -109,6 +109,16 @@ public final class AutomationSessionManager {
         publish(session, AutomationSession.State.RUNNING, "运行中");
     }
 
+    public void markUserStopped(AutomationSession session, String reason) {
+        if (session != null) {
+            session.cancelled = true;
+            session.state = AutomationSession.State.STOPPED;
+        }
+        cancelAiResources();
+        stateVersion.incrementAndGet();
+        publish(session, AutomationSession.State.STOPPED, reason == null ? "已停止" : reason);
+    }
+
     public void bindWorker(Thread t) {
         workerThread = t;
     }
@@ -121,16 +131,24 @@ public final class AutomationSessionManager {
         return aiClient;
     }
 
+    /**
+     * 已禁用：页面缓存失效、节点失败等场景绝不允许终止强行流水线。
+     */
     public void emergencyStop(String reason) {
-        emergencyStopInternal(reason, true);
+        AutomationLog.info("emergencyStop 已忽略（强行模式）：" + reason);
+        PageCacheManager.get().invalidate(reason == null ? "ignored" : reason);
     }
 
-    private void emergencyStopInternal(String reason, boolean publish) {
+    /** 仅释放 AI / executor，不中断 automation worker。 */
+    private void releasePreviousSessionResources() {
         AutomationSession s = current;
         if (s != null) {
             s.cancelled = true;
-            s.state = AutomationSession.State.STOPPED;
         }
+        cancelAiResources();
+    }
+
+    public void cancelAiResources() {
         mainHandler.removeCallbacksAndMessages(null);
         try {
             if (aiFuture != null) aiFuture.cancel(true);
@@ -146,16 +164,7 @@ public final class AutomationSessionManager {
         }
         executor = null;
         aiFuture = null;
-        if (workerThread != null) workerThread.interrupt();
-        workerThread = null;
-        AutomationOrchestrator.get().stopWorkerOnly();
-        AutomationRuntime.onStop();
-        PageCacheManager.get().invalidate("emergencyStop");
-        if (publish) {
-            stateVersion.incrementAndGet();
-            publish(s, AutomationSession.State.STOPPED, reason == null ? "已停止" : reason);
-            AutomationLog.warn("EMERGENCY_STOP " + reason);
-        }
+        aiClient = null;
     }
 
     public boolean shouldAcceptEvent(String sessionId, long version, long maxAgeMs) {

@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 强行自动化流水线：不校验页面/前台 App，点击开始后无限循环上滑与互动。
+ * 任何节点/缓存异常仅记录日志，不终止循环。
  */
 public class AutomationOrchestrator {
     public interface PhaseListener {
@@ -22,7 +23,7 @@ public class AutomationOrchestrator {
     private volatile AutomationPhase phase = AutomationPhase.IDLE;
     private volatile String detail = "";
     private volatile PhaseListener listener;
-    private Thread worker;
+    private volatile Thread worker;
     private Context appContext;
     private AutomationSession session;
     private AutomationSettings settings;
@@ -62,9 +63,10 @@ public class AutomationOrchestrator {
         AutomationRuntime.setFloatMessage("强行流水线已启动");
         setPhase(AutomationPhase.EXECUTING, "无限循环模式");
         AutomationSessionManager.get().markRunning(session);
-        worker = new Thread(this::forceLoop, "force-auto-loop");
-        AutomationSessionManager.get().bindWorker(worker);
-        worker.start();
+        Thread t = new Thread(this::forceLoop, "force-auto-loop");
+        worker = t;
+        AutomationSessionManager.get().bindWorker(t);
+        t.start();
     }
 
     public void pause() { stop(); }
@@ -73,17 +75,20 @@ public class AutomationOrchestrator {
 
     public void stop() {
         stopFlag.set(true);
-        AutomationSessionManager.get().emergencyStop("用户停止");
+        Thread t = worker;
+        if (t != null) t.interrupt();
+        AutomationSessionManager.get().cancelAiResources();
+        if (session != null) {
+            AutomationSessionManager.get().markUserStopped(session, "用户停止");
+        }
         running.set(false);
+        AutomationRuntime.onStop();
         setPhase(AutomationPhase.STOPPED, "已停止");
     }
 
+    /** 兼容旧调用：不再终止 worker，仅同步运行标志。 */
     public void stopWorkerOnly() {
-        stopFlag.set(true);
-        running.set(false);
-        worker = null;
-        session = null;
-        setPhase(AutomationPhase.STOPPED, "已停止");
+        AutomationLog.info("stopWorkerOnly 已忽略（强行模式保持运行）");
     }
 
     public String analyzeCurrentPage(Context ctx) {
@@ -91,40 +96,76 @@ public class AutomationOrchestrator {
     }
 
     private void forceLoop() {
-        final String sid = session == null ? "" : session.sessionId;
-        try {
-            while (!stopFlag.get() && AutomationSessionManager.get().isValid(sid)) {
+        final Thread self = Thread.currentThread();
+        AutomationLog.info("强行流水线启动");
+        while (!stopFlag.get()) {
+            try {
                 loopCount++;
-                session.processedUserCount = loopCount;
-
-                // Step 1: 强制上滑
-                setPhase(AutomationPhase.SCROLLING_LIST, "上滑翻页 #" + loopCount);
-                KSongAccessibilityService svc = KSongAccessibilityService.getInstance();
-                if (svc != null) {
-                    new GestureController(svc).performSwipeUp();
-                } else {
-                    AutomationEngineSelector.swipeUp(appContext, this);
+                if (session != null) {
+                    session.processedUserCount = loopCount;
                 }
-                RandomDelayHelper.sleepScaled(1500, 1.0, stopFlag);
+
+                setPhase(AutomationPhase.SCROLLING_LIST, "上滑翻页 #" + loopCount);
+                try {
+                    performForceSwipeUp();
+                } catch (Exception e) {
+                    AutomationLog.warn("上滑异常（继续）：" + e.getMessage());
+                }
 
                 if (stopFlag.get()) break;
 
-                // Step 2: 深度查找与互动（找不到则静默跳过）
-                setPhase(AutomationPhase.SCANNING, "扫描互动节点 #" + loopCount);
-                interactCurrentScreen(svc);
+                try {
+                    RandomDelayHelper.sleepScaled(1500, 1.0, stopFlag);
+                } catch (InterruptedException e) {
+                    if (stopFlag.get()) break;
+                    Thread.interrupted();
+                    AutomationLog.warn("等待被中断，继续下一轮");
+                    continue;
+                }
 
-                // Step 3: 随机等待 2~5 秒
+                if (stopFlag.get()) break;
+
+                setPhase(AutomationPhase.SCANNING, "扫描互动节点 #" + loopCount);
+                try {
+                    interactCurrentScreen(KSongAccessibilityService.getInstance());
+                } catch (Exception e) {
+                    AutomationLog.warn("互动异常（继续）：" + e.getMessage());
+                }
+
                 setPhase(AutomationPhase.WAITING_NEARBY_LIST, "随机等待");
-                RandomDelayHelper.delay(settings, stopFlag);
+                try {
+                    RandomDelayHelper.delay(settings, stopFlag);
+                } catch (InterruptedException e) {
+                    if (stopFlag.get()) break;
+                    Thread.interrupted();
+                    AutomationLog.warn("随机等待被中断，继续下一轮");
+                    continue;
+                }
                 AutomationRuntime.setProcessedCount(loopCount);
+            } catch (Exception e) {
+                AutomationLog.warn("流水线异常（继续下一轮）：" + e.getMessage());
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException ie) {
+                    if (stopFlag.get()) break;
+                    Thread.interrupted();
+                }
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        } catch (Exception e) {
-            AutomationLog.warn("流水线异常（继续下一轮）：" + e.getMessage());
-        } finally {
+        }
+        if (worker == self) {
             running.set(false);
         }
+        AutomationLog.info("强行流水线退出 stopFlag=" + stopFlag.get());
+    }
+
+    private void performForceSwipeUp() {
+        KSongAccessibilityService svc = KSongAccessibilityService.getInstance();
+        if (svc != null) {
+            boolean ok = new GestureController(svc).performSwipeUp();
+            AutomationLog.info("dispatchGesture 上滑 result=" + ok);
+            return;
+        }
+        AutomationEngineSelector.swipeUp(appContext, this);
     }
 
     private void interactCurrentScreen(KSongAccessibilityService svc) {
@@ -134,47 +175,70 @@ public class AutomationOrchestrator {
         }
         NodeActionController actions = new NodeActionController(svc);
 
-        if (actions.clickByTexts("关注", "+ 关注", "加关注")) {
-            AutomationLog.info("已点击关注");
-            session.actionCount++;
-        }
-
-        boolean openedComment = actions.clickByTexts("评论", "说点什么", "写评论", "发表评论");
-        if (openedComment) {
-            AutomationLog.info("已打开评论入口");
-        }
-
-        String draft = buildDraft();
-        if (draft.isEmpty()) {
-            if (actions.clickByTexts("私信", "发消息")) {
-                AutomationLog.info("已打开私信入口");
+        try {
+            if (actions.clickByTexts("关注", "+ 关注", "加关注")) {
+                AutomationLog.info("已点击关注");
+                if (session != null) session.actionCount++;
             }
+        } catch (Exception e) {
+            AutomationLog.warn("关注点击失败：" + e.getMessage());
+        }
+
+        boolean openedComment = false;
+        try {
+            openedComment = actions.clickByTexts("评论", "说点什么", "写评论", "发表评论");
+            if (openedComment) AutomationLog.info("已打开评论入口");
+        } catch (Exception e) {
+            AutomationLog.warn("评论入口点击失败：" + e.getMessage());
+        }
+
+        String draft = "";
+        try {
             draft = buildDraft();
+        } catch (Exception e) {
+            AutomationLog.warn("AI 草稿失败：" + e.getMessage());
+        }
+
+        if (draft.isEmpty()) {
+            try {
+                if (actions.clickByTexts("私信", "发消息")) {
+                    AutomationLog.info("已打开私信入口");
+                }
+                draft = buildDraft();
+            } catch (Exception e) {
+                AutomationLog.warn("私信入口失败：" + e.getMessage());
+            }
         }
 
         if (!draft.isEmpty()) {
-            boolean autoSend = !settings.testMode && (settings.autoSendComment || settings.autoSend);
-            NodeActionController.FillResult fill = actions.fillInputAndSend(draft, autoSend);
-            if (fill.filled) {
-                setPhase(AutomationPhase.FILLING_COMMENT,
-                        autoSend ? "已填写并尝试发送" : "已填写草稿（测试模式）");
-                AutomationLog.info("填写结果 method=" + fill.method + " sent=" + fill.sent);
+            try {
+                // 测试模式仅禁止自动发送，不拦截点击/填字/划屏
+                boolean autoSend = !settings.testMode && (settings.autoSendComment || settings.autoSend);
+                NodeActionController.FillResult fill = actions.fillInputAndSend(draft, autoSend);
+                if (fill.filled) {
+                    setPhase(AutomationPhase.FILLING_COMMENT,
+                            autoSend ? "已填写并尝试发送" : "已填写草稿（测试模式）");
+                    AutomationLog.info("填写结果 method=" + fill.method + " sent=" + fill.sent);
+                }
+            } catch (Exception e) {
+                AutomationLog.warn("填写失败：" + e.getMessage());
             }
-        } else if (actions.clickByTexts("说点什么", "输入", "评论")) {
-            actions.setText("很好听！");
+        } else {
+            try {
+                if (actions.clickByTexts("说点什么", "输入", "评论")) {
+                    actions.setText("很好听！");
+                }
+            } catch (Exception e) {
+                AutomationLog.warn("默认评论失败：" + e.getMessage());
+            }
         }
     }
 
     private String buildDraft() {
         if (!AiConfigRepository.get().isConfigured() || session == null) return "";
-        try {
-            AiContentGenerator.Draft d = AiContentGenerator.generateComment(
-                    appContext, session, "当前屏幕公开内容", "歌友");
-            return d.text == null ? "" : d.text.trim();
-        } catch (Exception e) {
-            AutomationLog.warn("AI 草稿跳过：" + e.getMessage());
-            return "";
-        }
+        AiContentGenerator.Draft d = AiContentGenerator.generateComment(
+                appContext, session, "当前屏幕公开内容", "歌友");
+        return d.text == null ? "" : d.text.trim();
     }
 
     private void setPhase(AutomationPhase p, String d) {

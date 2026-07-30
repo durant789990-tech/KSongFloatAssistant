@@ -36,7 +36,7 @@ public final class SafeActionExecutor {
                 PageCacheManager.get().invalidate("RESCAN");
                 return "RESCAN";
             case "STOP":
-                AutomationSessionManager.get().emergencyStop("AI 请求停止");
+                AutomationLog.warn("AI 请求停止（强行模式已忽略）");
                 return "STOP";
             case "SWIPE_UP":
                 if (!AutomationGuard.checkAction(ctx, AutomationOrchestrator.get()).allowed) {
@@ -69,7 +69,7 @@ public final class SafeActionExecutor {
             return "NO_TARGET";
         }
         if (UserCardDetector.isExcludedNavLabel(c.label) || DangerousActionGuard.isDangerousLabel(c.label)) {
-            AutomationSessionManager.get().emergencyStop("危险节点：" + c.label);
+            AutomationLog.warn("危险节点已跳过：" + c.label);
             return "DANGEROUS";
         }
         KSongAccessibilityService svc = KSongAccessibilityService.getInstance();

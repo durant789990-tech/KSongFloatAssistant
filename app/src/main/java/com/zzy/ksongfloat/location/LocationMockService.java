@@ -11,6 +11,7 @@ import android.location.LocationManager;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.SystemClock;
+import android.util.Log;
 
 import com.zzy.ksongfloat.MainActivity;
 
@@ -85,6 +86,7 @@ public class LocationMockService extends Service {
             double lat = cfg.latitude + drift();
             double lng = cfg.longitude + drift();
             long now = System.currentTimeMillis();
+            boolean securityDenied = false;
             for (String provider : PROVIDERS) {
                 try {
                     Location loc = new Location(provider);
@@ -97,19 +99,27 @@ public class LocationMockService extends Service {
                         loc.setMock(true);
                     }
                     lm.setTestProviderLocation(provider, loc);
-                } catch (Exception ignored) {
-                    // 单个 Provider 失败不影响其他 Provider
+                } catch (SecurityException se) {
+                    securityDenied = true;
+                    String hint = "请在开发者选项中重新勾选本应用";
+                    LocationStateRepository.get().onMockPermissionRevoked(this, hint);
+                    LocationMockManager.setLastResult(this, hint);
+                    Log.w("LocationMockService", "setTestProviderLocation SecurityException: " + se.getMessage());
+                } catch (Exception e) {
+                    Log.w("LocationMockService", provider + " 注入失败：" + e.getMessage());
                 }
+            }
+            if (securityDenied) {
+                return false;
             }
             LocationMockManager.setRunning(this, true);
             LocationMockManager.setLastResult(this, "已注入 " + lat + "," + lng);
             LocationStateRepository.get().onInjecting(this, cfg.label);
             return true;
         } catch (SecurityException se) {
-            LocationStateRepository.get().onProviderFailed(this, "SecurityException：" + se.getMessage());
-            LocationMockManager.setLastResult(this, "权限不足：请在开发者选项选择本应用");
-            stopMock();
-            stopSelf();
+            String hint = "请在开发者选项中重新勾选本应用";
+            LocationStateRepository.get().onMockPermissionRevoked(this, hint);
+            LocationMockManager.setLastResult(this, hint);
             return false;
         } catch (Exception e) {
             LocationStateRepository.get().onProviderFailed(this, e.getMessage());
